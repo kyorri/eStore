@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+
+{% block title %}Your Cart{% endblock %}
+
+{% block font %}
+{{ super() }}
+{% endblock %}
+
+{% block navbar %}
+
+<nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{{ url_for('home') }}">eStore</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+            aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('home') }}">Home</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('shop') }}">Shop</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" href="{{ url_for('view_cart') }}">Shopping Cart ({{ cart_count }})</a>
+                </li>
+                {% if current_user.is_authenticated %}
+                <li class="nav-item">
+                    <p class="nav-link m-0">Hello, <strong>{{ current_user.username }}</strong>!</p>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('logout') }}" class="nav-link text-danger">Logout</a>
+                </li>
+                {% else %}
+                <li class="nav-item">
+                    <a href="{{ url_for('login') }}" class="nav-link">Login</a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('register') }}" class="nav-link">Register</a>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<div class="container my-4">
+    <h1 class="text-center mb-4">Your Cart</h1>
+
+    {% if cart_items %}
+    <div class="row">
+        <div class="col-lg-9 col-md-8 col-12">
+            <div class="row row-cols-1 row-cols-md-3 row-cols-lg-3 g-4">
+                {% for item in cart_items %}
+                <div class="col">
+                    <div class="card" id="cart-item-{{ item.id }}">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ item.product.name }}</h5>
+                            <p class="card-text">Price: ${{ item.product.price }}</p>
+                            <p class="card-text">In Stock: {{ item.product.stock }}</p>
+                            <div class="d-flex align-items-center">
+                                <label for="quantity-{{ item.id }}" class="mr-4">Quantity: </label>
+                                <input type="number" class="form-control form-control-sm w-auto"
+                                    id="quantity-{{ item.id }}" data-cart-id="{{ item.id }}" value="{{ item.quantity }}"
+                                    min="0" max="{{ item.product.stock }}" required>
+                            </div>
+                            <p class="mt-2">Total Price: $<span class="item-total">{{ (item.product.price *
+                                    item.quantity) | round(2) }}</span></p>
+                            <form action="{{ url_for('remove_from_cart', cart_id=item.id) }}" method="POST"
+                                class="d-inline">
+                                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-4 col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Order Details</h5>
+                    <p class="card-text">Total Price: $<span id="total-price">{{ total_price | round(2) }}</span></p>
+                    <form action="{{ url_for('checkout') }}" method="POST">
+                        <button type="submit" class="btn btn-success btn-lg w-100">Proceed to Checkout</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="row mt-4">
+        <div class="col-12 text-center">
+            <p>Your cart is empty!</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    $(document).ready(function () {
+        // Ensure that the quantity input works and is being correctly bound
+        bindQuantityChangeListener();
+
+        function bindQuantityChangeListener() {
+            $("input[id^='quantity-']").on("change", function () {
+                var quantity = $(this).val();  // Get the new quantity
+                var cartItemId = $(this).data("cart-id");  // Get the cart item ID
+                var maxQuantity = $(this).prop('max');  // Get the max stock from the input field
+
+                console.log("Changing quantity for item:", cartItemId, "New Quantity:", quantity, "Max Quantity:", maxQuantity);
+
+                // Check if quantity is valid and within stock limits
+                if (parseInt(quantity) > parseInt(maxQuantity)) {
+                    alert("Not enough stock available.");
+                    $(this).val(maxQuantity);  // Reset to max available stock
+                    return;
+                }
+
+                if (parseInt(quantity) === 0) {
+                    // If quantity is 0, remove the item from the cart
+                    removeItemFromCart(cartItemId);
+                } else {
+                    // Update the cart item with the new quantity
+                    updateCart(cartItemId, quantity);
+                }
+            });
+        }
+
+        // Remove item from the cart via AJAX
+        function removeItemFromCart(cartItemId) {
+            $.ajax({
+                url: '/remove_from_cart/' + cartItemId,  // Remove the item from the cart
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': $("input[name='csrf_token']").val()  // CSRF token for security
+                },
+                success: function () {
+                    console.log("Item removed:", cartItemId);
+                    location.reload();  // Refresh the page to reflect the changes
+                },
+                error: function () {
+                    alert("Error removing item from the cart.");
+                }
+            });
+        }
+
+        // Update cart item with new quantity via AJAX
+        function updateCart(cartItemId, quantity) {
+            $.ajax({
+                url: '/update_cart/' + cartItemId,  // Update the cart item with new quantity
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': $("input[name='csrf_token']").val()  // CSRF token for security
+                },
+                data: {
+                    quantity: quantity
+                },
+                success: function (response) {
+                    console.log("Cart updated for item:", cartItemId, "New Total:", response.item_total);
+
+                    // Round the updated total price to two decimal places and update the display
+                    var roundedTotal = parseFloat(response.item_total).toFixed(2);
+                    $('#item-total-' + cartItemId).text('$' + roundedTotal);
+
+                    location.reload();  // Refresh the page to reflect the changes
+                },
+                error: function (xhr) {
+                    alert(xhr.responseJSON.error);  // Show error message if quantity exceeds stock
+                }
+            });
+        }
+
+        // Function to update the total price of the cart
+        function updateTotalPrice() {
+            var totalPrice = 0;
+            $(".item-total").each(function () {
+                totalPrice += parseFloat($(this).text().replace('$', ''));
+            });
+
+            // Round the total price to two decimal places and update the overall total price on the page
+            var roundedTotalPrice = totalPrice.toFixed(2);
+            console.log("Total Price updated:", roundedTotalPrice);
+            $("#total-price").text('$' + roundedTotalPrice);
+        }
+    });
+</script>
+{% endblock %}
